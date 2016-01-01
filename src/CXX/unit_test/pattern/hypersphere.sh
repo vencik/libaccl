@@ -1,3 +1,3 @@
 #!/bin/sh
 
-./hypersphere
+./hypersphere 2 15 0

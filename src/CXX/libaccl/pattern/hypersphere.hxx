@@ -98,6 +98,9 @@
 
 #include "libaccl/pattern/points.hxx"
 
+#include <algorithm>
+#include <cassert>
+
 
 namespace libaccl {
 namespace pattern {
@@ -113,69 +116,132 @@ namespace pattern {
  *  \tparam  Base_t  Base numeric type (integral)
  */
 template <typename Base_t>
-class hypersphere: public points<Base_t> {
+class hypersphere: public points<Base_t, unsigned> {
     private:
 
+    typedef points<Base_t, unsigned> super_t;  /**< Superclass */
+
     /**
-     *  \brief  Compute hypersphere points
+     *  \brief  Compute hypersphere 1st hyperoctant points
      *
      *  \param  centre  Hypersphere centre
-     *  \param  radius  Hypersphere radius
+     *  \param  layers  Hypersphere layers' radii
      *  \param  d       Slicing dimension
      */
-    void compute(
+    void octant(
         const std::vector<Base_t> & centre,
-        const Base_t              & radius,
+        const std::vector<Base_t> & layers,
         size_t                      d = 0)
     {
-        assert(0 <= radius);
         assert(d < centre.size());
+        assert(0 < layers.size());
 
         // 1D, create layers
         if (centre.size() - 1 == d) {
-            auto slice_point = centre;
-            for (Base_t d_diff = radius; d_diff > 0; ++d_diff) {
-                // Right side
-                slice_point[d] = centre[d] + d_diff;
-                point(slice_point);
+            auto     point  = centre;
+            unsigned layer  = 0;
+            Base_t   radius = layers[layer];
 
-                // Left side
-                slice_point[d] = centre[d] - d_diff;
-                point(slice_point);
+            point[d] += radius;
+            while (radius > layers[layers.size() - 1]) {
+                this->set(point, layer);
+                --point[d];
+                --radius;
+
+                while (layer < layers.size())
+                    if (radius <= layers[layer + 1]) layer++;
+                    else break;
             }
 
-            point(centre);
+            if (layer) --layer;
+            this->set(point, layer);  // stopper layer
 
             return;  // recursion fixed point
         }
 
         // Midpoint circle algorithm for slice radius computation
-        Base_t slice_radius = radius;
-        Base_t d_diff       = 0;
-        Base_t criterion    = 1 - slice_radius;
+        Base_t d_diff = 0;
+        std::vector<Base_t> radii;    radii.reserve(layers.size());
+        std::vector<Base_t> criteria; criteria.reserve(layers.size());
+
+        std::for_each(layers.begin(), layers.end(),
+        [&radii, &criteria](const Base_t & radius) {
+            radii.push_back(radius);
+            criteria.push_back(1 - radius);
+        });
 
         auto slice_centre = centre;
-        while (d_diff <= slice_radius) {
+        while (!radii.empty()) {
             // 1st octant
             slice_centre[d] = centre[d] + d_diff;
-            compute(slice_centre, slice_radius, d + 1);
+            octant(slice_centre, radii, d + 1);
 
-            // 2nd octant (by diagonal symmetry)
-            slice_centre[d] = centre[d] + slice_radius;
-            compute(slice_centre, d_diff, d + 1);
+            ++d_diff;  // next slice
 
-            // 8th octant
-            slice_centre[d] = centre[d] - d_diff;
-            compute(slice_centre, slice_radius, d + 1);
+            for (size_t i = 0; i < radii.size(); ++i) {
+                Base_t delta = radii[i] - d_diff;
 
-            // 7th octant (by diagonal symmetry)
-            slice_centre[d] = centre[d] - slice_radius;
-            compute(slice_centre, d_diff, d + 1);
+                // Octant done
+                if (delta <= 0) {
+                    if (0 < i && radii[i] + 1 <= radii[i - 1]) {
+                        if (delta) ++radii[i];
+                        ++i;
+                    }
 
-            Base_t delta = ++d_diff;
-            if (criterion > 0) delta -= --slice_radius;
-            delta <<= 2;
-            criterion += delta + 1;
+                    // the rest is out-of-scope, too
+                    for (; i < radii.size(); radii.pop_back());
+                    break;
+                }
+
+                // Update radius and criterion for the layer
+                Base_t chi = d_diff;
+                if (criteria[i] > 0) chi -= --radii[i];
+                chi <<= 2;
+                criteria[i] += chi + 1;
+            }
+        }
+    }
+
+    /**
+     *  \brief  Add 2nd-8th hyperoctants by symmetry
+     *
+     *  \param  dimension  Space dimension
+     */
+    void symmetry(size_t dimension) {
+        // Diagonal symmetry
+        for (size_t d = 0; d < dimension; ++d) {
+            size_t b = (d + 1) % dimension;
+
+            const typename super_t::set_t points(*this);
+            std::for_each(points.begin(), points.end(),
+            [this, d, b](
+                const std::pair<typename super_t::point_t, unsigned> & x_layer)
+            {
+                if (x_layer.first[d] != x_layer.first[b]) {
+                    auto y(x_layer.first);
+                    auto tmp = y[d];
+                    y[d] = y[b];
+                    y[b] = tmp;
+
+                    this->set(y, x_layer.second);
+                }
+            });
+        }
+
+        // Axial symmetry
+        for (size_t d = 0; d < dimension; ++d) {
+            const typename super_t::set_t points(*this);
+            std::for_each(points.begin(), points.end(),
+            [this, d](
+                const std::pair<typename super_t::point_t, unsigned> & x_layer)
+            {
+                if (0 != x_layer.first[d]) {
+                    auto y(x_layer.first);
+                    y[d] = -y[d];
+
+                    this->set(y, x_layer.second);
+                }
+            });
         }
     }
 
@@ -185,11 +251,17 @@ class hypersphere: public points<Base_t> {
      *  \brief  Constructor
      *
      *  \param  dimension  Space dimension
-     *  \param  radius     Hypersphere radius
+     *  \param  layers     Hypersphere layers' radii
      */
-    hypersphere(const Base_t & radius) {
+    hypersphere(
+        size_t                      dimension,
+        const std::vector<Base_t> & layers)
+    {
+        assert(0 < dimension);
+
         const std::vector<Base_t> zero(dimension, 0);
-        compute(zero, radius);
+        octant(zero, layers);
+        symmetry(dimension);
     }
 
 };  // end of template class hypersphere

@@ -44,7 +44,9 @@
  */
 
 #include <vector>
-#include <set>
+#include <map>
+#include <stdexcept>
+#include <cstdlib>
 
 
 namespace libaccl {
@@ -55,27 +57,74 @@ namespace pattern {
  *
  *  Set of points.
  *
- *  \tparam  Base_t  Base numeric type (integral)
+ *  \tparam  Base_t     Base numeric type (integral)
+ *  \tparam  Payload_t  Point payload type
  */
-template <typename Base_t>
+template <typename Base_t, typename Payload_t>
 class points {
+    public:
+
+    typedef std::vector<Base_t>          point_t;  /**< Point coordinates   */
+    typedef std::map<point_t, Payload_t> set_t;    /**< Implementation type */
+
     private:
 
-    std::set<std::vector<Base_t> > m_impl;  /**< Set of pattern points */
+    set_t m_impl;  /**< Set of pattern points */
 
     protected:
 
     /**
      *  \brief  Add point to set
      *
-     *  \param  x  Point (N-dimensional vector)
+     *  \param  point    Point coordinates (N-dimensional vector)
+     *  \param  payload  Point payload
      */
-    void point(const std::vector<Base_t> & x) { set.insert(x); }
+    void set(
+        const point_t   & point,
+        const Payload_t & payload = Payload_t())
+    {
+        m_impl.emplace(point, payload);
+    }
 
     public:
 
+    /** Set size */
+    size_t size() const { return m_impl.size(); }
+
     /** Pattern access */
-    operator const std::set<std::vector<Base_t> > & () const { return m_impl; }
+    operator const set_t & () const { return m_impl; }
+
+    /** Begin const iterator */
+    typename set_t::const_iterator begin() const { return m_impl.begin(); }
+
+    /** End const iterator */
+    typename set_t::const_iterator end() const { return m_impl.end(); }
+
+    /** Point getter (const) */
+    typename set_t::const_iterator get(const point_t & point) const {
+        return m_impl.find(point);
+    }
+
+    /** Point is in the set */
+    friend bool operator & (const point_t & point, const points & set) {
+        return set.end() != set.get(point);
+    }
+
+    /**
+     *  \brief  Point payload getter (const)
+     *
+     *  The function provides point payload.
+     *  If the point specified is not in the set, an exception is thrown.
+     */
+    const Payload_t & get_payload(const point_t & point) const {
+        auto x = get(point);
+        if (end() == x)
+            throw std::runtime_error(
+                "libaccl::points::get_payload: "
+                "no such point");
+
+        return x->second;
+    }
 
 };  // end of template class points
 

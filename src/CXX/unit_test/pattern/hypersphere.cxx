@@ -43,31 +43,73 @@
 
 #include <algorithm>
 #include <iostream>
+#include <iomanip>
 #include <exception>
 #include <stdexcept>
 
 
 /** Hypersphere pattern test */
-static int hypersphere_test() {
-    std::cout << "Hypersphere pattern test BEGIN" << std::endl;
+static int hypersphere_test(
+    size_t                   dimension,
+    const std::vector<int> & layers)
+{
+    std::cerr << "Hypersphere pattern test BEGIN" << std::endl;
 
     int error_cnt = 0;
 
     // Draw 2D hypersphere (i.e. a circle)
-    libaccl::pattern::hypersphere<int> circle(2, 10);
+    libaccl::pattern::hypersphere<int> circle(dimension, layers);
 
     std::for_each(circle.begin(), circle.end(),
-    [](const std::vector<int> & x) {
+    [](const libaccl::pattern::hypersphere<int>::set_t::value_type & x) {
         std::cout << '[';
 
-        std::for_each(x.begin(), x.end(), [](int x_i) {
+        std::for_each(x.first.begin(), x.first.end(), [](int x_i) {
             std::cout << x_i << ' ';
         });
 
-        std::cout << "]\n";
+        std::cout << "] " << x.second << std::endl;
     });
 
-    std::cout << "Hypersphere pattern test END" << std::endl;
+    // We plot 2D circles
+    if (2 == dimension) {
+        int radius = layers[0];
+
+        std::cout << "# ";
+        for (int x = -radius - 1; x < radius + 2; ++x)
+            std::cout << ' ' << ::abs(x) % 10;
+        std::cout << std::endl;
+
+        for (int y = radius + 1; y >= -radius - 1; --y) {
+            std::cout << '#' << ::abs(y) % 10;
+
+            for (int x = -radius - 1; x < radius + 2; ++x) {
+                std::vector<int> point(2);
+                point[0] = x;
+                point[1] = y;
+
+                if (point & circle)
+                    std::cout
+                        << std::setfill('0') << std::setw(2)
+                        << circle.get_payload(point);
+
+                else if (0 == x % 10) std::cout << " |";
+                else if (0 == y % 10) std::cout << "--";
+                else if (x ==  y)     std::cout << " /";
+                else if (x == -y)     std::cout << " \\";
+                else std::cout << " .";
+            }
+
+            std::cout << ' ' << ::abs(y) % 10 << std::endl;
+        }
+
+        std::cout << "# ";
+        for (int x = -radius - 1; x < radius + 2; ++x)
+            std::cout << ' ' << ::abs(x) % 10;
+        std::cout << std::endl;
+    }
+
+    std::cerr << "Hypersphere pattern test END" << std::endl;
 
     return error_cnt;
 }
@@ -77,8 +119,20 @@ static int hypersphere_test() {
 static int main_impl(int argc, char * const argv[]) {
     int exit_code = 64;  // pessimistic assumption
 
+    size_t dimension = 2;  // hypersphere dimension
+    if (argc > 1) dimension = ::atoi(argv[1]);
+
+    // Hypersphere layers
+    std::vector<int> layers;
+    for (int i = 2; i < argc; ++i)
+        layers.push_back(::atoi(argv[i]));
+
+    // Full hypersphere by default
+    if (layers.empty()) layers.push_back(12);
+
     do {  // pragmatic do ... while (0) loop allowing for breaks
-        if (0 != (exit_code = hypersphere_test())) break;
+        exit_code = hypersphere_test(dimension, layers);
+        if (0 != exit_code) break;
 
     } while (0);  // end of pragmatic loop
 

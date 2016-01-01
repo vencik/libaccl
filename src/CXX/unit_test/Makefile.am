@@ -1,2 +1,3 @@
 SUBDIRS = \
+    hash \
     pattern

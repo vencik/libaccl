@@ -155,13 +155,20 @@ AX_CXX_COMPILE_STDCXX_11([noext])
 # Create files
 #
 
+AC_MSG_NOTICE([creating Perl sources Makefile using Perl MakeMaker])
+( cd src/Perl; perl Makefile.PL PREFIX="${prefix}" ) || \
+    AC_MSG_ERROR([failed to create Perl sources Makefile])
+AC_MSG_NOTICE([Perl sources Makefile created])
+
 AC_CONFIG_FILES([
     Makefile
     src/Makefile
     src/CXX/Makefile
     src/CXX/libaccl/Makefile
+    src/CXX/libaccl/hash/Makefile
     src/CXX/libaccl/pattern/Makefile
     src/CXX/unit_test/Makefile
+    src/CXX/unit_test/hash/Makefile
     src/CXX/unit_test/pattern/Makefile
 ])
 AC_OUTPUT
